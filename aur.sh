@@ -18,6 +18,7 @@ fi
 AUR_URL="https://aur.archlinux.org"
 RPC="$AUR_URL/rpc/v5"
 CACHE="${XDG_CACHE_HOME:-$HOME/.cache}/aur"
+CACHE_SHOWN="${CACHE/#"$HOME"/\~}"
 
 declare -A VISITED=()
 declare -A TARGETS=()
@@ -50,7 +51,7 @@ usage() {
     ${CYAN}-S${NC}, ${CYAN}install${NC} ${DIM}<pkg>...${NC}   Build and install packages (with AUR dependencies)
     ${CYAN}-u${NC}, ${CYAN}update${NC}             Upgrade installed AUR packages
     ${CYAN}-l${NC}, ${CYAN}list${NC}               List installed foreign packages
-    ${CYAN}-c${NC}, ${CYAN}clean${NC}              Remove the build cache ${DIM}($CACHE)${NC}
+    ${CYAN}-c${NC}, ${CYAN}clean${NC}              Remove the build cache ${DIM}($CACHE_SHOWN)${NC}
     ${CYAN}-h${NC}, ${CYAN}help${NC}               Show this help
 
 EOF
@@ -304,7 +305,7 @@ cmd_list() {
 
 cmd_clean() {
     [[ -d $CACHE ]] || { info "Cache is already empty"; return; }
-    info "Cache: $CACHE ${DIM}($(du -sh -- "$CACHE" | cut -f1))${NC}"
+    info "Cache: $CACHE_SHOWN ${DIM}($(du -sh -- "$CACHE" | cut -f1))${NC}"
     confirm "Remove it?" || exit 0
     rm -rf -- "${CACHE:?}"
     ok "Cache removed"
