@@ -59,7 +59,7 @@ aur -h, --help                # help
 
 ### Selecting packages
 
-`aur <term>` lists search results with numbers and asks which ones to install (Enter installs nothing). `aur -u` lists available updates the same way, and before building you're asked which PKGBUILDs to review:
+`aur <term>` lists search results with numbers and asks which ones to install. That prompt only accepts numbers, ranges and commas (e.g. `2`, `1-3`, `1,4`), and Enter installs nothing. `aur -u` lists available updates the same way, and before building you're asked which PKGBUILDs to review:
 
 ```
 ==> 3 package(s) available to update:
@@ -72,8 +72,8 @@ aur -h, --help                # help
 | Input   | Selects                                                           |
 |---------|-------------------------------------------------------------------|
 | Enter   | the default: every update, but no search results or PKGBUILD reviews |
-| `a`     | everything                                                        |
-| `n`     | nothing                                                           |
+| `a`     | everything (not available when installing from search)            |
+| `n`     | nothing (not available when installing from search)               |
 | `1-2`   | 1 and 2                                                           |
 | `1,3`   | 1 and 3                                                           |
 | `1-2,4` | ranges and numbers combined                                       |
