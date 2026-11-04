@@ -39,10 +39,8 @@ banner() {
 usage() {
     local name
     name=$(basename "$0")
+    banner
     cat <<EOF
-
-  ${CYAN}▲${NC} ${BOLD}AUR Manager${NC}
-
   ${BOLD}Usage:${NC} $name ${CYAN}<command>${NC} ${DIM}[args]${NC}
 
   ${BOLD}Commands:${NC}
