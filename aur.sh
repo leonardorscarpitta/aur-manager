@@ -29,30 +29,46 @@ warn() { echo "${YELLOW}==> WARNING:${NC} ${BOLD}$*${NC}"; }
 ok()   { echo "${GREEN}==> ✔${NC} ${BOLD}$*${NC}"; }
 
 banner() {
+    local -a logo text
+    local i
+    mapfile -t logo <<'EOF'
+       /\
+      /  \
+     /\   \
+    /      \
+   /   ,,   \
+  /   |  |  -\
+ /_-''    ''-_\
+EOF
+    text=(
+        ""
+        ""
+        "${BOLD}AUR Manager${NC}"
+        "${DIM}─────────────────${NC}"
+        "${DIM}aur.archlinux.org${NC}"
+    )
     echo
-    echo "  ${CYAN}╭───────────────────────────────────────╮${NC}"
-    echo "  ${CYAN}│${NC}  ${CYAN}▲${NC} ${BOLD}AUR Manager${NC}  ${DIM}·${NC}  ${DIM}aur.archlinux.org${NC}  ${CYAN}│${NC}"
-    echo "  ${CYAN}╰───────────────────────────────────────╯${NC}"
+    for i in "${!logo[@]}"; do
+        printf '  %s%-16s%s  %s\n' "$CYAN" "${logo[$i]}" "$NC" "${text[$i]:-}"
+    done
     echo
 }
 
 usage() {
     local name
     name=$(basename "$0")
+    banner
     cat <<EOF
-
-  ${CYAN}▲${NC} ${BOLD}AUR Manager${NC}
-
   ${BOLD}Usage:${NC} $name ${CYAN}<command>${NC} ${DIM}[args]${NC}
 
   ${BOLD}Commands:${NC}
     ${CYAN}-s${NC}, ${CYAN}search${NC} ${DIM}<term>${NC}      Search the AUR
     ${CYAN}-i${NC}, ${CYAN}info${NC} ${DIM}<pkg>${NC}         Show package details
     ${CYAN}-S${NC}, ${CYAN}install${NC} ${DIM}<pkg>...${NC}   Build and install packages (with AUR dependencies)
-    ${CYAN}-u${NC}, ${CYAN}update${NC}               Upgrade installed AUR packages
-    ${CYAN}-l${NC}, ${CYAN}list${NC}                 List installed foreign packages
-    ${CYAN}-c${NC}, ${CYAN}clean${NC}                Remove the build cache ${DIM}($CACHE)${NC}
-    ${CYAN}-h${NC}, ${CYAN}help${NC}                 Show this help
+    ${CYAN}-u${NC}, ${CYAN}update${NC}             Upgrade installed AUR packages
+    ${CYAN}-l${NC}, ${CYAN}list${NC}               List installed foreign packages
+    ${CYAN}-c${NC}, ${CYAN}clean${NC}              Remove the build cache ${DIM}($CACHE)${NC}
+    ${CYAN}-h${NC}, ${CYAN}help${NC}               Show this help
 
 EOF
 }
