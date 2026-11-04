@@ -85,24 +85,32 @@ confirm() {
 # Prints "(n)" padded to the width of the largest index.
 num_label() { printf '%s%*s%s' "$CYAN" $(( ${#2} + 2 )) "($1)" "$NC"; }
 
-# select_items <count> <question>: reads a selection like "1-2,4" (Enter = all, n = none)
-# and fills SELECTED with the chosen 0-based indices in ascending order.
+# select_items <count> <question> [all|none]: reads a selection like "1-2,4" (a = all, n = none,
+# Enter = the default, all unless "none" is given) and fills SELECTED with 0-based indices in ascending order.
 select_items() {
-    local count=$1 answer part a b i valid
+    local count=$1 default=${3:-all} answer part a b i valid hint
     local -a parts
     local -A picked
+    if [[ $default == all ]]; then
+        hint="[Enter = all, e.g. 1-2,4, n = none]"
+    else
+        hint="[Enter = none, e.g. 1-2,4, a = all]"
+    fi
     while true; do
         SELECTED=()
         picked=()
         valid=1
-        read -rp "${BLUE}::${NC} ${BOLD}$2${NC} ${DIM}[Enter = all, e.g. 1-2,4, n = none]${NC} " answer || exit 1
+        read -rp "${BLUE}::${NC} ${BOLD}$2${NC} ${DIM}$hint${NC} " answer || exit 1
         answer=${answer//[[:space:]]/,}
+        [[ -n ${answer//,/} ]] || answer=$default
 
-        if [[ -z ${answer//,/} ]]; then
-            for (( i = 0; i < count; i++ )); do SELECTED+=("$i"); done
-            return 0
-        fi
-        [[ $answer != [nN] ]] || return 0
+        case $answer in
+            a|A|all)
+                for (( i = 0; i < count; i++ )); do SELECTED+=("$i"); done
+                return 0 ;;
+            n|N|none)
+                return 0 ;;
+        esac
 
         IFS=',' read -ra parts <<<"$answer"
         for part in "${parts[@]}"; do
@@ -287,7 +295,7 @@ install_pkgs() {
     done
 
     print_plan
-    select_items "$total" "PKGBUILDs to review?"
+    select_items "$total" "PKGBUILDs to review?" none
     if [[ ${#SELECTED[@]} -eq 0 ]]; then
         warn "skipping PKGBUILD review, make sure you trust these packages"
     fi

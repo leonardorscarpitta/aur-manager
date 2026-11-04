@@ -69,13 +69,14 @@ aur -h, --help                # help
 :: Packages to update? [Enter = all, e.g. 1-2,4, n = none]
 ```
 
-| Input   | Selects                       |
-|---------|-------------------------------|
-| Enter   | everything                    |
-| `1-2`   | 1 and 2                       |
-| `1,3`   | 1 and 3                       |
-| `1-2,4` | ranges and numbers combined   |
-| `n`     | nothing                       |
+| Input   | Selects                                                           |
+|---------|-------------------------------------------------------------------|
+| Enter   | the default: every update, but no PKGBUILD reviews                 |
+| `a`     | everything                                                        |
+| `n`     | nothing                                                           |
+| `1-2`   | 1 and 2                                                           |
+| `1,3`   | 1 and 3                                                           |
+| `1-2,4` | ranges and numbers combined                                       |
 
 Only flags are commands. Any other word is a search term, so `aur search` searches for packages named "search".
 
@@ -90,7 +91,7 @@ Output is coloured when writing to a terminal. Set `NO_COLOR=1` to turn colours 
 
 ## Security
 
-- PKGBUILDs are shown in `$PAGER` before building, all of them by default. You can choose to review only some, or none (you get a warning). On updates, only the diff since the last build is shown, and packages whose build files changed are marked `(changed)`.
+- Before building, you choose which PKGBUILDs to read in `$PAGER` (`a` for all). Pressing Enter skips the review, and you get a warning. On updates, only the diff since the last build is shown, and packages whose build files changed are marked `(changed)`.
 - Nothing is built until you confirm.
 - Package names are validated before they are used in URLs or paths.
 - Refuses to run as root. `makepkg` calls `sudo` only for the install step.
