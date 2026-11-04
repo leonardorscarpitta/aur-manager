@@ -22,6 +22,8 @@ CACHE_SHOWN="${CACHE/#"$HOME"/\~}"
 
 declare -A VISITED=()
 declare -A TARGETS=()
+declare -A OLD_HEAD=()
+SELECTED=()
 ORDER=()
 
 die()  { echo "${RED}==> ERROR:${NC} ${BOLD}$*${NC}" >&2; exit 1; }
@@ -68,10 +70,64 @@ valid_name() { [[ ${1:-} =~ ^[a-z0-9@_+][a-z0-9@._+-]*$ ]]; }
 
 urlencode() { jq -rn --arg v "$1" '$v|@uri'; }
 
+# confirm <question> [y|n]: the second argument is the answer used when the user just presses Enter.
 confirm() {
-    local answer
-    read -rp "${BLUE}::${NC} ${BOLD}$1${NC} [y/N] " answer
-    [[ $answer == [yY] ]]
+    local answer default=${2:-n}
+    if [[ $default == y ]]; then
+        read -rp "${BLUE}::${NC} ${BOLD}$1${NC} [Y/n] " answer || return 1
+        [[ -z $answer || $answer == [yY] ]]
+    else
+        read -rp "${BLUE}::${NC} ${BOLD}$1${NC} [y/N] " answer || return 1
+        [[ $answer == [yY] ]]
+    fi
+}
+
+# Prints "(n)" padded to the width of the largest index.
+num_label() { printf '%s%*s%s' "$CYAN" $(( ${#2} + 2 )) "($1)" "$NC"; }
+
+# select_items <count> <question>: reads a selection like "1-2,4" (Enter = all, n = none)
+# and fills SELECTED with the chosen 0-based indices in ascending order.
+select_items() {
+    local count=$1 answer part a b i valid
+    local -a parts
+    local -A picked
+    while true; do
+        SELECTED=()
+        picked=()
+        valid=1
+        read -rp "${BLUE}::${NC} ${BOLD}$2${NC} ${DIM}[Enter = all, e.g. 1-2,4, n = none]${NC} " answer || exit 1
+        answer=${answer//[[:space:]]/,}
+
+        if [[ -z ${answer//,/} ]]; then
+            for (( i = 0; i < count; i++ )); do SELECTED+=("$i"); done
+            return 0
+        fi
+        [[ $answer != [nN] ]] || return 0
+
+        IFS=',' read -ra parts <<<"$answer"
+        for part in "${parts[@]}"; do
+            [[ -n $part ]] || continue
+            if [[ $part =~ ^([0-9]+)-([0-9]+)$ ]]; then
+                a=$(( 10#${BASH_REMATCH[1]} )) b=$(( 10#${BASH_REMATCH[2]} ))
+            elif [[ $part =~ ^[0-9]+$ ]]; then
+                a=$(( 10#$part )) b=$a
+            else
+                valid=0; break
+            fi
+            if (( a < 1 || b > count || a > b )); then
+                valid=0; break
+            fi
+            for (( i = a; i <= b; i++ )); do picked[$i]=1; done
+        done
+
+        if (( valid )); then
+            for (( i = 1; i <= count; i++ )); do
+                [[ -z ${picked[$i]:-} ]] || SELECTED+=($(( i - 1 )))
+            done
+            return 0
+        fi
+        warn "invalid selection '$answer', use numbers from 1 to $count (e.g. 1-2,4)"
+    done
 }
 
 # Runs curl in the background and draws a spinner on stderr while it waits.
@@ -170,21 +226,26 @@ resolve() {
     ORDER+=("$pkg")
 }
 
-# Clones or updates the package repo and shows the PKGBUILD (or the diff since last time) for review.
-fetch() {
-    local pkg=$1 dir="$CACHE/$1" old
+# Clones or updates the package repo, remembering the previous HEAD so review() can show a diff.
+sync_repo() {
+    local pkg=$1 dir="$CACHE/$1"
     if [[ -d $dir/.git ]]; then
-        old=$(git -C "$dir" rev-parse HEAD)
+        OLD_HEAD[$pkg]=$(git -C "$dir" rev-parse HEAD)
         git -C "$dir" pull -q --ff-only || die "failed to update $pkg repo"
-        if [[ $old != "$(git -C "$dir" rev-parse HEAD)" ]]; then
-            git -C "$dir" -c color.ui=always diff "$old" HEAD | ${PAGER:-less -R}
-            return
-        fi
     else
         git clone -q "$AUR_URL/$pkg.git" "$dir" || die "failed to clone $pkg"
     fi
     [[ -f $dir/PKGBUILD ]] || { rm -rf -- "$dir"; die "$pkg has no PKGBUILD"; }
-    ${PAGER:-less} "$dir/PKGBUILD"
+}
+
+# Shows the diff since the last build if the repo changed, otherwise the full PKGBUILD.
+review() {
+    local pkg=$1 dir="$CACHE/$1" old=${OLD_HEAD[$1]:-}
+    if [[ -n $old && $old != "$(git -C "$dir" rev-parse HEAD)" ]]; then
+        git -C "$dir" -c color.ui=always diff "$old" HEAD | ${PAGER:-less -R}
+    else
+        ${PAGER:-less} "$dir/PKGBUILD"
+    fi
 }
 
 build() {
@@ -193,21 +254,22 @@ build() {
 }
 
 print_plan() {
-    local pkg
+    local pkg i total=${#ORDER[@]} tag
     echo
-    echo "  ${BOLD}Packages (${#ORDER[@]})${NC}"
-    for pkg in "${ORDER[@]}"; do
-        if [[ -n ${TARGETS[$pkg]:-} ]]; then
-            echo "    ${MAGENTA}aur/${NC}${BOLD}$pkg${NC}"
-        else
-            echo "    ${MAGENTA}aur/${NC}${BOLD}$pkg${NC} ${DIM}(dependency)${NC}"
-        fi
+    echo "  ${BOLD}Packages ($total)${NC}"
+    for i in "${!ORDER[@]}"; do
+        pkg=${ORDER[$i]}
+        tag=""
+        [[ -n ${TARGETS[$pkg]:-} ]] || tag=" ${DIM}(dependency)${NC}"
+        [[ -z ${OLD_HEAD[$pkg]:-} || ${OLD_HEAD[$pkg]} == "$(git -C "$CACHE/$pkg" rev-parse HEAD)" ]] \
+            || tag+=" ${YELLOW}(changed)${NC}"
+        echo "    $(num_label $((i + 1)) "$total") ${MAGENTA}aur/${NC}${BOLD}$pkg${NC}$tag"
     done
     echo
 }
 
 install_pkgs() {
-    local pkg i=0 total
+    local pkg i total
     for pkg in "$@"; do
         valid_name "$pkg" || die "invalid package name: $pkg"
         TARGETS[$pkg]=1
@@ -218,15 +280,22 @@ install_pkgs() {
     done
     total=${#ORDER[@]}
 
-    print_plan
-    confirm "Review PKGBUILDs and continue?" || exit 0
-
     mkdir -p "$CACHE"
+    info "Fetching build files..."
     for pkg in "${ORDER[@]}"; do
-        info "Reviewing ${CYAN}$pkg${NC} ${DIM}($((++i))/$total)${NC}"
-        fetch "$pkg"
+        sync_repo "$pkg"
     done
-    confirm "Build and install $total package(s)?" || exit 0
+
+    print_plan
+    select_items "$total" "PKGBUILDs to review?"
+    if [[ ${#SELECTED[@]} -eq 0 ]]; then
+        warn "skipping PKGBUILD review, make sure you trust these packages"
+    fi
+    for i in "${SELECTED[@]}"; do
+        info "Reviewing ${CYAN}${ORDER[$i]}${NC}"
+        review "${ORDER[$i]}"
+    done
+    confirm "Build and install $total package(s)?" y || exit 0
 
     i=0
     for pkg in "${ORDER[@]}"; do
@@ -248,7 +317,7 @@ cmd_install() {
 }
 
 cmd_update() {
-    local -a names=() vers=() query=() outdated=()
+    local -a names=() vers=() query=() outdated=() current=() available=() chosen=()
     local -A remote=()
     local name ver resp latest i width=0
 
@@ -278,8 +347,9 @@ cmd_update() {
         if [[ -z $latest ]]; then
             printf '    %s%-*s%s  %s\n' "$DIM" "$width" "$name" "$NC" "${YELLOW}not in the AUR${NC}"
         elif (( $(vercmp "${vers[$i]}" "$latest") < 0 )); then
-            printf '    %s%-*s%s  %s  →  %s\n' "$BOLD" "$width" "$name" "$NC" "${RED}${vers[$i]}${NC}" "${GREEN}$latest${NC}"
             outdated+=("$name")
+            current+=("${vers[$i]}")
+            available+=("$latest")
         else
             printf '    %-*s  %s\n' "$width" "$name" "${DIM}${vers[$i]} (up to date)${NC}"
         fi
@@ -290,7 +360,23 @@ cmd_update() {
         ok "All AUR packages are up to date"
         return
     fi
-    install_pkgs "${outdated[@]}"
+
+    info "${#outdated[@]} package(s) available to update:"
+    for i in "${!outdated[@]}"; do
+        printf '    %s %s%-*s%s  %s  →  %s\n' "$(num_label $((i + 1)) "${#outdated[@]}")" \
+            "$BOLD" "$width" "${outdated[$i]}" "$NC" "${RED}${current[$i]}${NC}" "${GREEN}${available[$i]}${NC}"
+    done
+    echo
+
+    select_items "${#outdated[@]}" "Packages to update?"
+    if [[ ${#SELECTED[@]} -eq 0 ]]; then
+        info "Nothing selected"
+        return
+    fi
+    for i in "${SELECTED[@]}"; do
+        chosen+=("${outdated[$i]}")
+    done
+    install_pkgs "${chosen[@]}"
 }
 
 cmd_list() {

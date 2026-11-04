@@ -57,6 +57,26 @@ aur -c            # remove the build cache
 aur -h            # help
 ```
 
+### Selecting packages
+
+`aur -u` lists available updates with numbers, and before building you're asked which PKGBUILDs to review:
+
+```
+==> 3 package(s) available to update:
+    (1) brave-bin               1:1.98.62-1  →  1:1.98.63-1
+    (2) claude-code             2.1.316-1    →  2.1.318-1
+    (3) visual-studio-code-bin  1.105.0-1    →  1.106.0-1
+:: Packages to update? [Enter = all, e.g. 1-2,4, n = none]
+```
+
+| Input   | Selects                       |
+|---------|-------------------------------|
+| Enter   | everything                    |
+| `1-2`   | 1 and 2                       |
+| `1,3`   | 1 and 3                       |
+| `1-2,4` | ranges and numbers combined   |
+| `n`     | nothing                       |
+
 Only flags are commands. Any other word is a search term, so `aur search` searches for packages named "search".
 
 Output is coloured when writing to a terminal. Set `NO_COLOR=1` to turn colours off.
@@ -70,7 +90,7 @@ Output is coloured when writing to a terminal. Set `NO_COLOR=1` to turn colours 
 
 ## Security
 
-- Every PKGBUILD is shown in `$PAGER` before building. On updates, only the diff since the last build is shown.
+- PKGBUILDs are shown in `$PAGER` before building, all of them by default. You can choose to review only some, or none (you get a warning). On updates, only the diff since the last build is shown, and packages whose build files changed are marked `(changed)`.
 - Nothing is built until you confirm.
 - Package names are validated before they are used in URLs or paths.
 - Refuses to run as root. `makepkg` calls `sudo` only for the install step.
