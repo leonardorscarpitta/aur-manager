@@ -11,6 +11,13 @@ A small AUR helper for Arch Linux written in Bash.
 
 `bash`, `curl`, `jq`, `git` and `base-devel` (`makepkg`, `vercmp`).
 
+## Install
+
+```
+git clone git@github.com:leonardorscarpitta/aur-manager.git
+cd aur-manager
+```
+
 ## Usage
 
 ```
