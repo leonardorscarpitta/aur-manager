@@ -34,27 +34,30 @@ sudo curl -fsSL https://raw.githubusercontent.com/leonardorscarpitta/aur-manager
 sudo chmod +x /usr/local/bin/aur
 ```
 
-Then run `aur help`. To update the script itself, run the same commands again.
+Then run `aur -h`. To update the script itself, run the same commands again.
 
 For development, clone the repo instead:
 
 ```
 git clone git@github.com:leonardorscarpitta/aur-manager.git
 cd aur-manager
-./aur.sh help
+./aur.sh -h
 ```
 
 ## Usage
 
 ```
-aur <term>             #     shortcut for search
-aur search <term>      # -s  search the AUR, sorted by popularity
-aur info <pkg>         # -i  package details
-aur install <pkg>...   # -S  build and install, resolving AUR dependencies
-aur update             # -u  upgrade installed AUR packages
-aur list               # -l  installed foreign packages
-aur clean              # -c  remove the build cache
+aur <term>        # search the AUR, sorted by popularity (same as -s)
+aur -s <term>     # search the AUR
+aur -i <pkg>      # package details
+aur -S <pkg>...   # build and install, resolving AUR dependencies
+aur -u            # upgrade installed AUR packages
+aur -l            # installed foreign packages
+aur -c            # remove the build cache
+aur -h            # help
 ```
+
+Only flags are commands. Any other word is a search term, so `aur search` searches for packages named "search".
 
 Output is coloured when writing to a terminal. Set `NO_COLOR=1` to turn colours off.
 
