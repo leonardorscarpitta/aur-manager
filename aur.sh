@@ -85,32 +85,40 @@ confirm() {
 # Prints "(n)" padded to the width of the largest index.
 num_label() { printf '%s%*s%s' "$CYAN" $(( ${#2} + 2 )) "($1)" "$NC"; }
 
-# select_items <count> <question> [all|none]: reads a selection like "1-2,4" (a = all, n = none,
-# Enter = the default, all unless "none" is given) and fills SELECTED with 0-based indices in ascending order.
+# select_items <count> <question> [all|none|ranges]: reads a selection like "1-2,4" and fills SELECTED
+# with 0-based indices in ascending order. Modes:
+#   all    - Enter selects everything, "n" selects nothing
+#   none   - Enter selects nothing, "a" selects everything
+#   ranges - only numbers, ranges and commas; Enter selects nothing
 select_items() {
-    local count=$1 default=${3:-all} answer part a b i valid hint
+    local count=$1 mode=${3:-all} answer part a b i valid hint
     local -a parts
     local -A picked
-    if [[ $default == all ]]; then
-        hint="[Enter = all, e.g. 1-2,4, n = none]"
-    else
-        hint="[Enter = none, e.g. 1-2,4, a = all]"
-    fi
+    case $mode in
+        all)    hint="[Enter = all, e.g. 1-2,4, n = none]" ;;
+        none)   hint="[Enter = none, e.g. 1-2,4, a = all]" ;;
+        ranges) hint="[e.g. 1-2,4, Enter = cancel]" ;;
+    esac
     while true; do
         SELECTED=()
         picked=()
         valid=1
         read -rp "${BLUE}::${NC} ${BOLD}$2${NC} ${DIM}$hint${NC} " answer || exit 1
         answer=${answer//[[:space:]]/,}
-        [[ -n ${answer//,/} ]] || answer=$default
 
-        case $answer in
-            a|A|all)
-                for (( i = 0; i < count; i++ )); do SELECTED+=("$i"); done
-                return 0 ;;
-            n|N|none)
-                return 0 ;;
-        esac
+        if [[ -z ${answer//,/} ]]; then
+            [[ $mode == all ]] || return 0
+            answer=a
+        fi
+        if [[ $mode != ranges ]]; then
+            case $answer in
+                a|A|all)
+                    for (( i = 0; i < count; i++ )); do SELECTED+=("$i"); done
+                    return 0 ;;
+                n|N|none)
+                    return 0 ;;
+            esac
+        fi
 
         IFS=',' read -ra parts <<<"$answer"
         for part in "${parts[@]}"; do
@@ -192,7 +200,7 @@ cmd_search() {
 
     $numbered || return 0
     mapfile -t names < <(jq -r '.results | sort_by(-.Popularity)[].Name' <<<"$resp")
-    select_items "$count" "Packages to install?" none
+    select_items "$count" "Packages to install?" ranges
     if [[ ${#SELECTED[@]} -eq 0 ]]; then
         info "Nothing selected"
         return
