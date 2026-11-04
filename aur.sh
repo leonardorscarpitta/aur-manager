@@ -1,12 +1,19 @@
 #!/bin/bash
 set -euo pipefail
 
-RED=$'\033[0;31m'
-GREEN=$'\033[0;32m'
-YELLOW=$'\033[1;33m'
-CYAN=$'\033[0;36m'
-NC=$'\033[0m'
-DIVISOR='=--=--=--=--=--=--=--=--=--=--=--=--=--='
+if [[ -t 1 && -z ${NO_COLOR:-} ]]; then
+    BOLD=$'\033[1m'
+    DIM=$'\033[2m'
+    RED=$'\033[1;31m'
+    GREEN=$'\033[1;32m'
+    YELLOW=$'\033[1;33m'
+    BLUE=$'\033[1;34m'
+    MAGENTA=$'\033[1;35m'
+    CYAN=$'\033[1;36m'
+    NC=$'\033[0m'
+else
+    BOLD='' DIM='' RED='' GREEN='' YELLOW='' BLUE='' MAGENTA='' CYAN='' NC=''
+fi
 
 AUR_URL="https://aur.archlinux.org"
 RPC="$AUR_URL/rpc/v5"
@@ -16,29 +23,37 @@ declare -A VISITED=()
 declare -A TARGETS=()
 ORDER=()
 
-die()  { echo -e "${RED}error:${NC} $*" >&2; exit 1; }
-info() { echo -e "${CYAN}::${NC} $*"; }
-warn() { echo -e "${YELLOW}::${NC} $*"; }
-ok()   { echo -e "${GREEN}::${NC} $*"; }
+die()  { echo "${RED}==> ERROR:${NC} ${BOLD}$*${NC}" >&2; exit 1; }
+info() { echo "${BLUE}==>${NC} ${BOLD}$*${NC}"; }
+warn() { echo "${YELLOW}==> WARNING:${NC} ${BOLD}$*${NC}"; }
+ok()   { echo "${GREEN}==> ✔${NC} ${BOLD}$*${NC}"; }
 
 banner() {
-    echo -e "$DIVISOR\n"
-    echo -e "${CYAN} AUR Manager ${NC}\n"
-    echo -e "$DIVISOR\n"
+    echo
+    echo "  ${CYAN}╭───────────────────────────────────────╮${NC}"
+    echo "  ${CYAN}│${NC}  ${CYAN}▲${NC} ${BOLD}AUR Manager${NC}  ${DIM}·${NC}  ${DIM}aur.archlinux.org${NC}  ${CYAN}│${NC}"
+    echo "  ${CYAN}╰───────────────────────────────────────╯${NC}"
+    echo
 }
 
 usage() {
+    local name
+    name=$(basename "$0")
     cat <<EOF
-Usage: $(basename "$0") <command> [args]
 
-Commands:
-  -s, search <term>      Search the AUR
-  -i, info <pkg>         Show package details
-  -S, install <pkg>...   Build and install packages (with AUR dependencies)
-  -u, update             Upgrade installed AUR packages
-  -l, list               List installed foreign packages
-  -c, clean              Remove the build cache ($CACHE)
-  -h, help               Show this help
+  ${CYAN}▲${NC} ${BOLD}AUR Manager${NC}
+
+  ${BOLD}Usage:${NC} $name ${CYAN}<command>${NC} ${DIM}[args]${NC}
+
+  ${BOLD}Commands:${NC}
+    ${CYAN}-s${NC}, ${CYAN}search${NC} ${DIM}<term>${NC}      Search the AUR
+    ${CYAN}-i${NC}, ${CYAN}info${NC} ${DIM}<pkg>${NC}         Show package details
+    ${CYAN}-S${NC}, ${CYAN}install${NC} ${DIM}<pkg>...${NC}   Build and install packages (with AUR dependencies)
+    ${CYAN}-u${NC}, ${CYAN}update${NC}               Upgrade installed AUR packages
+    ${CYAN}-l${NC}, ${CYAN}list${NC}                 List installed foreign packages
+    ${CYAN}-c${NC}, ${CYAN}clean${NC}                Remove the build cache ${DIM}($CACHE)${NC}
+    ${CYAN}-h${NC}, ${CYAN}help${NC}                 Show this help
+
 EOF
 }
 
@@ -55,30 +70,53 @@ urlencode() { jq -rn --arg v "$1" '$v|@uri'; }
 
 confirm() {
     local answer
-    read -rp "$1 [y/N] " answer
+    read -rp "${BLUE}::${NC} ${BOLD}$1${NC} [y/N] " answer
     [[ $answer == [yY] ]]
 }
 
+# Runs curl in the background and draws a spinner on stderr while it waits.
 rpc() {
-    local resp
-    resp=$(curl -fsSL --proto '=https' --max-time 20 "$RPC/$1") || die "failed to reach $AUR_URL"
+    local tmp pid resp status=0 i=0 frames='⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏'
+    tmp=$(mktemp)
+    curl -fsSL --proto '=https' --max-time 20 -o "$tmp" "$RPC/$1" &
+    pid=$!
+    if [[ -t 2 ]]; then
+        while kill -0 "$pid" 2>/dev/null; do
+            printf '\r  %s %s' "${CYAN}${frames:i++%${#frames}:1}${NC}" "${DIM}querying aur.archlinux.org...${NC}" >&2
+            sleep 0.08
+        done
+        printf '\r\033[K' >&2
+    fi
+    wait "$pid" || status=$?
+    resp=$(<"$tmp")
+    rm -f -- "$tmp"
+    (( status == 0 )) || die "failed to reach $AUR_URL"
     [[ $(jq -r '.type' <<<"$resp") != error ]] || die "AUR: $(jq -r '.error' <<<"$resp")"
     printf '%s' "$resp"
 }
 
 cmd_search() {
     [[ -n ${1:-} ]] || die "usage: search <term>"
-    local resp
-    info "Fetching from aur.archlinux.org"
+    local resp installed count
     resp=$(rpc "search/$(urlencode "$1")")
-    if [[ $(jq '.resultcount' <<<"$resp") -eq 0 ]]; then
+    count=$(jq '.resultcount' <<<"$resp")
+    if (( count == 0 )); then
         warn "no results for '$1'"
         return
     fi
-    jq -r --arg g "$GREEN" --arg n "$NC" '
+    installed=$(pacman -Qmq | jq -Rn '[inputs]')
+    jq -r --argjson inst "$installed" \
+        --arg b "$BOLD" --arg d "$DIM" --arg m "$MAGENTA" --arg g "$GREEN" \
+        --arg r "$RED" --arg c "$CYAN" --arg y "$YELLOW" --arg n "$NC" '
         .results | sort_by(-.Popularity)[] |
-        "\($g)\(.Name)\($n) \(.Version) (+\(.NumVotes))\(if .OutOfDate then " [out of date]" else "" end)\n    \(.Description // "")"
+        "\($m)aur/\($n)\($b)\(.Name)\($n) \($g)\(.Version)\($n)"
+        + " \($y)★ \(.NumVotes)\($n) \($d)(\(.Popularity * 100 | round / 100))\($n)"
+        + (if .OutOfDate then " \($r)[out of date]\($n)" else "" end)
+        + (if (.Name as $x | $inst | index($x)) then " \($c)[installed]\($n)" else "" end)
+        + "\n    \(.Description // "")"
     ' <<<"$resp"
+    echo
+    info "$count result(s) for '$1'"
 }
 
 cmd_info() {
@@ -86,18 +124,24 @@ cmd_info() {
     local resp
     resp=$(rpc "info?arg[]=$(urlencode "$1")")
     [[ $(jq '.resultcount' <<<"$resp") -gt 0 ]] || die "$1 not found in AUR"
-    jq -r '.results[0] | [
-        "Name          : \(.Name)",
-        "Version       : \(.Version)",
-        "Description   : \(.Description // "-")",
-        "URL           : \(.URL // "-")",
-        "Maintainer    : \(.Maintainer // "orphan")",
-        "Votes         : \(.NumVotes)",
-        "Out of date   : \(if .OutOfDate then (.OutOfDate | todate) else "no" end)",
-        "Depends       : \((.Depends // []) | join(" "))",
-        "Make depends  : \((.MakeDepends // []) | join(" "))",
-        "Last modified : \(.LastModified | todate)"
-    ] | .[]' <<<"$resp"
+    jq -r --arg b "$BOLD" --arg d "$DIM" --arg g "$GREEN" --arg r "$RED" \
+        --arg c "$CYAN" --arg y "$YELLOW" --arg n "$NC" '
+        def row(k; v): "  \($c)\(k)\($n)\(" " * (16 - (k | length)))\(v)";
+        def deps(x): if (x // []) | length > 0 then (x | join("  ")) else "\($d)None\($n)" end;
+        .results[0] |
+        row("Name"; "\($b)\(.Name)\($n)"),
+        row("Version"; "\($g)\(.Version)\($n)"),
+        row("Description"; .Description // "-"),
+        row("URL"; .URL // "-"),
+        row("AUR page"; "https://aur.archlinux.org/packages/\(.Name)"),
+        row("Maintainer"; .Maintainer // "\($r)orphan\($n)"),
+        row("Votes"; "\($y)★ \(.NumVotes)\($n)  \($d)popularity \(.Popularity * 100 | round / 100)\($n)"),
+        row("Out of date"; if .OutOfDate then "\($r)since \(.OutOfDate | todate)\($n)" else "\($g)no\($n)" end),
+        row("Depends"; deps(.Depends)),
+        row("Make depends"; deps(.MakeDepends)),
+        row("Last modified"; .LastModified | todate)
+    ' <<<"$resp"
+    echo
 }
 
 # Prints the dependencies of $1 that are neither installed nor in the official repos.
@@ -133,7 +177,7 @@ fetch() {
         old=$(git -C "$dir" rev-parse HEAD)
         git -C "$dir" pull -q --ff-only || die "failed to update $pkg repo"
         if [[ $old != "$(git -C "$dir" rev-parse HEAD)" ]]; then
-            git -C "$dir" diff "$old" HEAD | ${PAGER:-less}
+            git -C "$dir" -c color.ui=always diff "$old" HEAD | ${PAGER:-less -R}
             return
         fi
     else
@@ -148,8 +192,22 @@ build() {
     (cd "$CACHE/$pkg" && makepkg -si --needed "$@") || die "build failed for $pkg"
 }
 
-install_pkgs() {
+print_plan() {
     local pkg
+    echo
+    echo "  ${BOLD}Packages (${#ORDER[@]})${NC}"
+    for pkg in "${ORDER[@]}"; do
+        if [[ -n ${TARGETS[$pkg]:-} ]]; then
+            echo "    ${MAGENTA}aur/${NC}${BOLD}$pkg${NC}"
+        else
+            echo "    ${MAGENTA}aur/${NC}${BOLD}$pkg${NC} ${DIM}(dependency)${NC}"
+        fi
+    done
+    echo
+}
+
+install_pkgs() {
+    local pkg i=0 total
     for pkg in "$@"; do
         valid_name "$pkg" || die "invalid package name: $pkg"
         TARGETS[$pkg]=1
@@ -158,25 +216,30 @@ install_pkgs() {
     for pkg in "$@"; do
         resolve "$pkg"
     done
+    total=${#ORDER[@]}
 
-    info "Packages to build: ${ORDER[*]}"
-    confirm "Proceed?" || exit 0
+    print_plan
+    confirm "Review PKGBUILDs and continue?" || exit 0
 
     mkdir -p "$CACHE"
     for pkg in "${ORDER[@]}"; do
-        info "Review $pkg"
+        info "Reviewing ${CYAN}$pkg${NC} ${DIM}($((++i))/$total)${NC}"
         fetch "$pkg"
     done
-    confirm "Build and install ${ORDER[*]}?" || exit 0
+    confirm "Build and install $total package(s)?" || exit 0
 
+    i=0
     for pkg in "${ORDER[@]}"; do
+        echo
+        info "Building ${CYAN}$pkg${NC} ${DIM}($((++i))/$total)${NC}"
         if [[ -n ${TARGETS[$pkg]:-} ]]; then
             build "$pkg"
         else
             build "$pkg" --asdeps
         fi
     done
-    ok "Done"
+    echo
+    ok "Installed ${ORDER[*]}"
 }
 
 cmd_install() {
@@ -187,11 +250,12 @@ cmd_install() {
 cmd_update() {
     local -a names=() vers=() query=() outdated=()
     local -A remote=()
-    local name ver resp latest i
+    local name ver resp latest i width=0
 
     while read -r name ver; do
         names+=("$name")
         vers+=("$ver")
+        (( ${#name} > width )) && width=${#name}
     done < <(pacman -Qm)
     if [[ ${#names[@]} -eq 0 ]]; then
         info "No foreign packages installed"
@@ -207,18 +271,20 @@ cmd_update() {
         remote[$name]=$ver
     done < <(jq -r '.results[] | "\(.Name)\t\(.Version)"' <<<"$resp")
 
+    echo
     for i in "${!names[@]}"; do
         name=${names[$i]}
         latest=${remote[$name]:-}
         if [[ -z $latest ]]; then
-            warn "$name is not in the AUR, skipping"
-            continue
-        fi
-        if (( $(vercmp "${vers[$i]}" "$latest") < 0 )); then
-            echo "   $name ${vers[$i]} -> ${GREEN}$latest${NC}"
+            printf '    %s%-*s%s  %s\n' "$DIM" "$width" "$name" "$NC" "${YELLOW}not in the AUR${NC}"
+        elif (( $(vercmp "${vers[$i]}" "$latest") < 0 )); then
+            printf '    %s%-*s%s  %s  →  %s\n' "$BOLD" "$width" "$name" "$NC" "${RED}${vers[$i]}${NC}" "${GREEN}$latest${NC}"
             outdated+=("$name")
+        else
+            printf '    %-*s  %s\n' "$width" "$name" "${DIM}${vers[$i]} (up to date)${NC}"
         fi
     done
+    echo
 
     if [[ ${#outdated[@]} -eq 0 ]]; then
         ok "All AUR packages are up to date"
@@ -227,9 +293,20 @@ cmd_update() {
     install_pkgs "${outdated[@]}"
 }
 
+cmd_list() {
+    local name ver count=0
+    while read -r name ver; do
+        echo "    ${MAGENTA}aur/${NC}${BOLD}$name${NC} ${GREEN}$ver${NC}"
+        count=$((count + 1))
+    done < <(pacman -Qm)
+    echo
+    info "$count foreign package(s) installed"
+}
+
 cmd_clean() {
     [[ -d $CACHE ]] || { info "Cache is already empty"; return; }
-    confirm "Remove $CACHE?" || exit 0
+    info "Cache: $CACHE ${DIM}($(du -sh -- "$CACHE" | cut -f1))${NC}"
+    confirm "Remove it?" || exit 0
     rm -rf -- "${CACHE:?}"
     ok "Cache removed"
 }
@@ -251,7 +328,7 @@ main() {
         -i|info)    cmd_info "$@" ;;
         -S|install) cmd_install "$@" ;;
         -u|update)  cmd_update ;;
-        -l|list)    pacman -Qm ;;
+        -l|list)    cmd_list ;;
         -c|clean)   cmd_clean ;;
         *)          usage; exit 1 ;;
     esac

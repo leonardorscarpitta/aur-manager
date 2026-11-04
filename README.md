@@ -11,27 +11,55 @@ A small AUR helper for Arch Linux written in Bash.
 
 `bash`, `curl`, `jq`, `git` and `base-devel` (`makepkg`, `vercmp`).
 
+```
+sudo pacman -S --needed bash curl jq git base-devel
+```
+
 ## Install
+
+Download the script straight into your `PATH` as `aur`.
+
+For your user only (`~/.local/bin` must be in your `PATH`):
+
+```
+mkdir -p ~/.local/bin
+curl -fsSL https://raw.githubusercontent.com/leonardorscarpitta/aur-manager/develop/aur.sh -o ~/.local/bin/aur
+chmod +x ~/.local/bin/aur
+```
+
+For all users:
+
+```
+sudo curl -fsSL https://raw.githubusercontent.com/leonardorscarpitta/aur-manager/develop/aur.sh -o /usr/local/bin/aur
+sudo chmod +x /usr/local/bin/aur
+```
+
+Then run `aur help`. To update the script itself, run the same commands again.
+
+For development, clone the repo instead:
 
 ```
 git clone git@github.com:leonardorscarpitta/aur-manager.git
 cd aur-manager
+./aur.sh help
 ```
 
 ## Usage
 
 ```
-./aur.sh search <term>      # -s  search the AUR, sorted by popularity
-./aur.sh info <pkg>         # -i  package details
-./aur.sh install <pkg>...   # -S  build and install, resolving AUR dependencies
-./aur.sh update             # -u  upgrade installed AUR packages
-./aur.sh list               # -l  installed foreign packages
-./aur.sh clean              # -c  remove the build cache
+aur search <term>      # -s  search the AUR, sorted by popularity
+aur info <pkg>         # -i  package details
+aur install <pkg>...   # -S  build and install, resolving AUR dependencies
+aur update             # -u  upgrade installed AUR packages
+aur list               # -l  installed foreign packages
+aur clean              # -c  remove the build cache
 ```
+
+Output is coloured when writing to a terminal. Set `NO_COLOR=1` to turn colours off.
 
 ## How it works
 
-- Queries the [AUR RPC v5 API](https://wiki.archlinux.org/title/Aurweb_RPC_interface) with `curl` and parses it with `jq`.
+- Queries the [AUR RPC v5 API](https://wiki.archlinux.org/title/Aurweb_RPC_interface) with `curl` and parses it with `jq`. A spinner shows while requests are in flight.
 - Package repos are cloned into `${XDG_CACHE_HOME:-~/.cache}/aur/<pkg>` and built with `makepkg -si`.
 - Dependencies that aren't installed and aren't in the official repos are treated as AUR packages and built first (installed with `--asdeps`).
 - Updates compare `pacman -Qm` versions against the AUR with `vercmp`, using a single RPC request.
