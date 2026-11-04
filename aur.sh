@@ -42,6 +42,7 @@ usage() {
     banner
     cat <<EOF
   ${BOLD}Usage:${NC} $name ${CYAN}<command>${NC} ${DIM}[args]${NC}
+         $name ${CYAN}<term>${NC}              ${DIM}same as search <term>${NC}
 
   ${BOLD}Commands:${NC}
     ${CYAN}-s${NC}, ${CYAN}search${NC} ${DIM}<term>${NC}      Search the AUR
@@ -328,7 +329,8 @@ main() {
         -u|update)  cmd_update ;;
         -l|list)    cmd_list ;;
         -c|clean)   cmd_clean ;;
-        *)          usage; exit 1 ;;
+        -*)         usage; exit 1 ;;
+        *)          cmd_search "$cmd" ;;
     esac
 }
 
