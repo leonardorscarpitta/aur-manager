@@ -47,6 +47,7 @@ cd aur-manager
 ## Usage
 
 ```
+aur <term>             #     shortcut for search
 aur search <term>      # -s  search the AUR, sorted by popularity
 aur info <pkg>         # -i  package details
 aur install <pkg>...   # -S  build and install, resolving AUR dependencies
