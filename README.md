@@ -47,8 +47,8 @@ cd aur-manager
 ## Usage
 
 ```
-aur <term>                    # search the AUR, sorted by popularity (same as -s)
-aur -s, --search <term>       # search the AUR
+aur <term>                    # search and pick packages to install from a numbered list
+aur -s, --search <term>       # search only, sorted by popularity
 aur -i, --info <pkg>          # package details
 aur -S, --install <pkg>...    # build and install, resolving AUR dependencies
 aur -u, --update              # upgrade installed AUR packages
@@ -59,7 +59,7 @@ aur -h, --help                # help
 
 ### Selecting packages
 
-`aur -u` lists available updates with numbers, and before building you're asked which PKGBUILDs to review:
+`aur <term>` lists search results with numbers and asks which ones to install (Enter installs nothing). `aur -u` lists available updates the same way, and before building you're asked which PKGBUILDs to review:
 
 ```
 ==> 3 package(s) available to update:
@@ -71,7 +71,7 @@ aur -h, --help                # help
 
 | Input   | Selects                                                           |
 |---------|-------------------------------------------------------------------|
-| Enter   | the default: every update, but no PKGBUILD reviews                 |
+| Enter   | the default: every update, but no search results or PKGBUILD reviews |
 | `a`     | everything                                                        |
 | `n`     | nothing                                                           |
 | `1-2`   | 1 and 2                                                           |

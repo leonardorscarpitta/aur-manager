@@ -159,28 +159,48 @@ rpc() {
     printf '%s' "$resp"
 }
 
+# cmd_search <term> [pick]: with "pick", results are numbered and the user chooses which ones to install.
 cmd_search() {
     [[ -n ${1:-} ]] || die "usage: -s, --search <term>"
-    local resp installed count
+    local resp installed count i numbered=false
+    local -a names=() chosen=()
+    [[ ${2:-} != pick ]] || numbered=true
+
     resp=$(rpc "search/$(urlencode "$1")")
     count=$(jq '.resultcount' <<<"$resp")
     if (( count == 0 )); then
         warn "no results for '$1'"
         return
     fi
-    installed=$(pacman -Qmq | jq -Rn '[inputs]')
-    jq -r --argjson inst "$installed" \
+    installed=$({ pacman -Qmq || true; } | jq -Rn '[inputs]')
+    jq -r --argjson inst "$installed" --argjson numbered "$numbered" --argjson w $(( ${#count} + 2 )) \
         --arg b "$BOLD" --arg d "$DIM" --arg m "$MAGENTA" --arg g "$GREEN" \
         --arg r "$RED" --arg c "$CYAN" --arg y "$YELLOW" --arg n "$NC" '
-        .results | sort_by(-.Popularity)[] |
-        "\($m)aur/\($n)\($b)\(.Name)\($n) \($g)\(.Version)\($n)"
+        .results | sort_by(-.Popularity) | to_entries[] |
+        (if $numbered then ("(\(.key + 1))" | (" " * ($w - length)) + .) else "" end) as $label |
+        (if $numbered then " " * ($w + 1) else "" end) as $pad |
+        .value |
+        (if $numbered then "\($c)\($label)\($n) " else "" end)
+        + "\($m)aur/\($n)\($b)\(.Name)\($n) \($g)\(.Version)\($n)"
         + " \($y)★ \(.NumVotes)\($n) \($d)(\(.Popularity * 100 | round / 100))\($n)"
         + (if .OutOfDate then " \($r)[out of date]\($n)" else "" end)
         + (if (.Name as $x | $inst | index($x)) then " \($c)[installed]\($n)" else "" end)
-        + "\n    \(.Description // "")"
+        + "\n    \($pad)\(.Description // "")"
     ' <<<"$resp"
     echo
     info "$count result(s) for '$1'"
+
+    $numbered || return 0
+    mapfile -t names < <(jq -r '.results | sort_by(-.Popularity)[].Name' <<<"$resp")
+    select_items "$count" "Packages to install?" none
+    if [[ ${#SELECTED[@]} -eq 0 ]]; then
+        info "Nothing selected"
+        return
+    fi
+    for i in "${SELECTED[@]}"; do
+        chosen+=("${names[$i]}")
+    done
+    install_pkgs "${chosen[@]}"
 }
 
 cmd_info() {
@@ -425,7 +445,7 @@ main() {
         -l|--list)    cmd_list ;;
         -c|--clean)   cmd_clean ;;
         -*)           usage; exit 1 ;;
-        *)            cmd_search "$cmd" ;;
+        *)            cmd_search "$cmd" pick ;;
     esac
 }
 
