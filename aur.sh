@@ -29,36 +29,20 @@ warn() { echo "${YELLOW}==> WARNING:${NC} ${BOLD}$*${NC}"; }
 ok()   { echo "${GREEN}==> ✔${NC} ${BOLD}$*${NC}"; }
 
 banner() {
-    local -a logo text
-    local i
-    mapfile -t logo <<'EOF'
-       /\
-      /  \
-     /\   \
-    /      \
-   /   ,,   \
-  /   |  |  -\
- /_-''    ''-_\
-EOF
-    text=(
-        ""
-        ""
-        "${BOLD}AUR Manager${NC}"
-        "${DIM}─────────────────${NC}"
-        "${DIM}aur.archlinux.org${NC}"
-    )
     echo
-    for i in "${!logo[@]}"; do
-        printf '  %s%-16s%s  %s\n' "$CYAN" "${logo[$i]}" "$NC" "${text[$i]:-}"
-    done
+    echo "  ${CYAN}╭───────────────────────────────────────╮${NC}"
+    echo "  ${CYAN}│${NC}  ${CYAN}▲${NC} ${BOLD}AUR Manager${NC}  ${DIM}·${NC}  ${DIM}aur.archlinux.org${NC}  ${CYAN}│${NC}"
+    echo "  ${CYAN}╰───────────────────────────────────────╯${NC}"
     echo
 }
 
 usage() {
     local name
     name=$(basename "$0")
-    banner
     cat <<EOF
+
+  ${CYAN}▲${NC} ${BOLD}AUR Manager${NC}
+
   ${BOLD}Usage:${NC} $name ${CYAN}<command>${NC} ${DIM}[args]${NC}
 
   ${BOLD}Commands:${NC}
