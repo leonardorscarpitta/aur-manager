@@ -47,14 +47,14 @@ cd aur-manager
 ## Usage
 
 ```
-aur <term>        # search the AUR, sorted by popularity (same as -s)
-aur -s <term>     # search the AUR
-aur -i <pkg>      # package details
-aur -S <pkg>...   # build and install, resolving AUR dependencies
-aur -u            # upgrade installed AUR packages
-aur -l            # installed foreign packages
-aur -c            # remove the build cache
-aur -h            # help
+aur <term>                    # search the AUR, sorted by popularity (same as -s)
+aur -s, --search <term>       # search the AUR
+aur -i, --info <pkg>          # package details
+aur -S, --install <pkg>...    # build and install, resolving AUR dependencies
+aur -u, --update              # upgrade installed AUR packages
+aur -l, --list                # installed foreign packages
+aur -c, --clean               # remove the build cache
+aur -h, --help                # help
 ```
 
 ### Selecting packages

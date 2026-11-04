@@ -45,16 +45,16 @@ usage() {
     banner
     cat <<EOF
   ${BOLD}Usage:${NC} $name ${CYAN}<flag>${NC} ${DIM}[args]${NC}
-         $name ${CYAN}<term>${NC}         ${DIM}same as -s <term>${NC}
+         $name ${CYAN}<term>${NC}                  ${DIM}same as -s <term>${NC}
 
   ${BOLD}Flags:${NC}
-    ${CYAN}-s${NC} ${DIM}<term>${NC}         Search the AUR
-    ${CYAN}-i${NC} ${DIM}<pkg>${NC}          Show package details
-    ${CYAN}-S${NC} ${DIM}<pkg>...${NC}       Build and install packages (with AUR dependencies)
-    ${CYAN}-u${NC}                Upgrade installed AUR packages
-    ${CYAN}-l${NC}                List installed foreign packages
-    ${CYAN}-c${NC}                Remove the build cache ${DIM}($CACHE_SHOWN)${NC}
-    ${CYAN}-h${NC}, ${CYAN}--help${NC}        Show this help
+    ${CYAN}-s${NC}, ${CYAN}--search${NC} ${DIM}<term>${NC}      Search the AUR
+    ${CYAN}-i${NC}, ${CYAN}--info${NC} ${DIM}<pkg>${NC}         Show package details
+    ${CYAN}-S${NC}, ${CYAN}--install${NC} ${DIM}<pkg>...${NC}   Build and install packages (with AUR dependencies)
+    ${CYAN}-u${NC}, ${CYAN}--update${NC}             Upgrade installed AUR packages
+    ${CYAN}-l${NC}, ${CYAN}--list${NC}               List installed foreign packages
+    ${CYAN}-c${NC}, ${CYAN}--clean${NC}              Remove the build cache ${DIM}($CACHE_SHOWN)${NC}
+    ${CYAN}-h${NC}, ${CYAN}--help${NC}               Show this help
 
 EOF
 }
@@ -152,7 +152,7 @@ rpc() {
 }
 
 cmd_search() {
-    [[ -n ${1:-} ]] || die "usage: -s <term>"
+    [[ -n ${1:-} ]] || die "usage: -s, --search <term>"
     local resp installed count
     resp=$(rpc "search/$(urlencode "$1")")
     count=$(jq '.resultcount' <<<"$resp")
@@ -312,7 +312,7 @@ install_pkgs() {
 }
 
 cmd_install() {
-    [[ $# -gt 0 ]] || die "usage: -S <pkg>..."
+    [[ $# -gt 0 ]] || die "usage: -S, --install <pkg>..."
     install_pkgs "$@"
 }
 
@@ -410,14 +410,14 @@ main() {
     banner
 
     case $cmd in
-        -s) cmd_search "$@" ;;
-        -i) cmd_info "$@" ;;
-        -S) cmd_install "$@" ;;
-        -u) cmd_update ;;
-        -l) cmd_list ;;
-        -c) cmd_clean ;;
-        -*) usage; exit 1 ;;
-        *)  cmd_search "$cmd" ;;
+        -s|--search)  cmd_search "$@" ;;
+        -i|--info)    cmd_info "$@" ;;
+        -S|--install) cmd_install "$@" ;;
+        -u|--update)  cmd_update ;;
+        -l|--list)    cmd_list ;;
+        -c|--clean)   cmd_clean ;;
+        -*)           usage; exit 1 ;;
+        *)            cmd_search "$cmd" ;;
     esac
 }
 
