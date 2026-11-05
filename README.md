@@ -62,7 +62,18 @@ aur -h, --help                # help
 
 By default every command covers both sources:
 
-- **Search** lists official repo results first (`core/`, `extra/`, `multilib/`, …), then AUR results sorted by popularity, in one numbered list.
+- **Search** prints one list bottom-up, so official packages sit right above the prompt. `(1)` is the best official match (`core/`, `extra/`, `multilib/`, …), then come the rest of the official results, then AUR results by popularity, with the least popular AUR result at the top:
+
+  ```
+  (404) aur/zigdown-bin 1.3.1-1 ★ 0 (0)
+    ...
+    (8) aur/neovim-nightly-bin 0.13.0+dev+2012+gb4d549f439-1 ★ 63 (1)
+    (7) extra/python-pynvim 0.6.0-2
+    ...
+    (1) extra/bob 4.3.0-1
+  ==> 404 result(s) for 'neovim' (7 official, 397 AUR)
+  :: Packages to install? [e.g. 1-2,4, Enter = cancel]
+  ```
 - **Install** sends packages found in the official repos to `sudo pacman -S --needed` and builds the rest from the AUR. If a name exists in both, the official repo wins. A prefix forces the source: `aur -S extra/neovim aur/yay`.
 - **Info** shows `pacman -Si` for official packages and AUR details otherwise.
 - **Update** runs `sudo pacman -Syu` first, then checks AUR packages.
