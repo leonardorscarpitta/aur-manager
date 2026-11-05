@@ -1,6 +1,6 @@
 # AUR Manager
 
-A small AUR helper for Arch Linux written in Bash.
+A small package manager front end for Arch Linux written in Bash. It handles the official repos (core, extra, multilib, …) and the AUR in one place.
 
 <p>
   <img src="https://img.shields.io/badge/shell-bash-4eaa25" alt="Bash">
@@ -9,7 +9,7 @@ A small AUR helper for Arch Linux written in Bash.
 
 ## Requirements
 
-`bash`, `curl`, `jq`, `git` and `base-devel` (`makepkg`, `vercmp`).
+`bash`, `curl`, `jq`, `git` and `base-devel` (`makepkg`, `vercmp`, `sudo`).
 
 ```
 sudo pacman -S --needed bash curl jq git base-devel
@@ -48,13 +48,30 @@ cd aur-manager
 
 ```
 aur <term>                    # search and pick packages to install from a numbered list
-aur -s, --search <term>       # search only, sorted by popularity
+aur -s, --search <term>       # search only
 aur -i, --info <pkg>          # package details
-aur -S, --install <pkg>...    # build and install, resolving AUR dependencies
-aur -u, --update              # upgrade installed AUR packages
-aur -l, --list                # installed foreign packages
+aur -S, --install <pkg>...    # install from the official repos or the AUR
+aur -u, --update              # pacman -Syu, then upgrade AUR packages
+aur -l, --list                # installed AUR (foreign) packages
 aur -c, --clean               # remove the build cache
 aur -h, --help                # help
+```
+
+### Official repos and the AUR
+
+By default every command covers both sources:
+
+- **Search** lists official repo results first (`core/`, `extra/`, `multilib/`, …), then AUR results sorted by popularity, in one numbered list.
+- **Install** sends packages found in the official repos to `sudo pacman -S --needed` and builds the rest from the AUR. If a name exists in both, the official repo wins. A prefix forces the source: `aur -S extra/neovim aur/yay`.
+- **Info** shows `pacman -Si` for official packages and AUR details otherwise.
+- **Update** runs `sudo pacman -Syu` first, then checks AUR packages.
+
+Modifiers limit a command to one source and can go anywhere on the command line:
+
+```
+aur neovim -a        # search the AUR only
+aur -r -u            # only pacman -Syu
+aur -S foo --aur     # build foo from the AUR even if the official repos have it
 ```
 
 ### Selecting packages
@@ -84,6 +101,7 @@ Output is coloured when writing to a terminal. Set `NO_COLOR=1` to turn colours 
 
 ## How it works
 
+- Official repos are queried with `pacman -Ss` / `pacman -Si` against your local sync databases. The script never runs `pacman -Sy` on its own, so it can't cause a partial upgrade.
 - Queries the [AUR RPC v5 API](https://wiki.archlinux.org/title/Aurweb_RPC_interface) with `curl` and parses it with `jq`. A spinner shows while requests are in flight.
 - Package repos are cloned into `${XDG_CACHE_HOME:-~/.cache}/aur/<pkg>` and built with `makepkg -si`.
 - Dependencies that aren't installed and aren't in the official repos are treated as AUR packages and built first (installed with `--asdeps`).
@@ -94,7 +112,7 @@ Output is coloured when writing to a terminal. Set `NO_COLOR=1` to turn colours 
 - Before building, you choose which PKGBUILDs to read in `$PAGER` (`a` for all). Pressing Enter skips the review, and you get a warning. On updates, only the diff since the last build is shown, and packages whose build files changed are marked `(changed)`.
 - Nothing is built until you confirm.
 - Package names are validated before they are used in URLs or paths.
-- Refuses to run as root. `makepkg` calls `sudo` only for the install step.
+- Refuses to run as root. `sudo` is only used for `pacman` (repo installs, `-Syu`, and makepkg's install step).
 
 ## Limitations
 
