@@ -27,6 +27,7 @@ declare -A TARGETS=()
 declare -A OLD_HEAD=()
 SELECTED=()
 ORDER=()
+SPIN_OUT=''
 
 die()  { echo "${RED}==> ERROR:${NC} ${BOLD}$*${NC}" >&2; exit 1; }
 info() { echo "${BLUE}==>${NC} ${BOLD}$*${NC}"; }
@@ -81,7 +82,14 @@ in_repos() { pacman -Si -- "$1" &>/dev/null; }
 
 # Prints official repo matches for $1 as "repo<TAB>name<TAB>version<TAB>installed(0|1)<TAB>description".
 repo_search() {
-    local line rn ver='' rest repo='' name='' installed=0
+    local line rn ver='' rest repo='' name='' installed=0 list
+    local -a repos=()
+    mapfile -t repos < <(pacman-conf --repo-list 2>/dev/null || true)
+    list=$(IFS=,; echo "${repos[*]}")
+    list=${list//,/, }
+
+    spin "searching ${list:-official repos}..." pacman -Ss -- "$1" || true
+    [[ -n $SPIN_OUT ]] || return 0
     while IFS= read -r line; do
         if [[ $line == "    "* ]]; then
             printf '%s\t%s\t%s\t%s\t%s\n' "$repo" "$name" "$ver" "$installed" "${line#    }"
@@ -92,7 +100,7 @@ repo_search() {
             installed=0
             [[ $rest != *"[installed"* ]] || installed=1
         fi
-    done < <(pacman -Ss -- "$1" 2>/dev/null || true)
+    done <<<"$SPIN_OUT"
 }
 
 urlencode() { jq -rn --arg v "$1" '$v|@uri'; }
@@ -173,22 +181,33 @@ select_items() {
     done
 }
 
-# Runs curl in the background and draws a spinner on stderr while it waits.
-rpc() {
-    local tmp pid resp status=0 i=0 frames='⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏'
+# spin <message> <cmd>...: runs the command in the background with its stdout captured into SPIN_OUT
+# (its stderr is discarded).
+# On a terminal, a spinner with the message stays up for at least 0.5s (fetch time included) so it can be read.
+spin() {
+    local msg=$1 tmp pid start status=0 i=0 frames='⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏'
+    shift
     tmp=$(mktemp)
-    curl -fsSL --proto '=https' --max-time 20 -o "$tmp" "$RPC/$1" &
+    "$@" >"$tmp" 2>/dev/null &
     pid=$!
     if [[ -t 2 ]]; then
-        while kill -0 "$pid" 2>/dev/null; do
-            printf '\r  %s %s' "${CYAN}${frames:i++%${#frames}:1}${NC}" "${DIM}querying aur.archlinux.org...${NC}" >&2
+        start=${EPOCHREALTIME/[.,]/}
+        while kill -0 "$pid" 2>/dev/null || (( ${EPOCHREALTIME/[.,]/} - start < 500000 )); do
+            printf '\r  %s %s' "${CYAN}${frames:i++%${#frames}:1}${NC}" "${DIM}$msg${NC}" >&2
             sleep 0.08
         done
         printf '\r\033[K' >&2
     fi
     wait "$pid" || status=$?
-    resp=$(<"$tmp")
+    SPIN_OUT=$(<"$tmp")
     rm -f -- "$tmp"
+    return "$status"
+}
+
+rpc() {
+    local resp status=0
+    spin "fetching from aur.archlinux.org..." curl -fsSL --proto '=https' --max-time 20 "$RPC/$1" || status=$?
+    resp=$SPIN_OUT
     (( status == 0 )) || die "failed to reach $AUR_URL"
     [[ $(jq -r '.type' <<<"$resp") != error ]] || die "AUR: $(jq -r '.error' <<<"$resp")"
     printf '%s' "$resp"

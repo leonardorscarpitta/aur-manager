@@ -102,7 +102,7 @@ Output is coloured when writing to a terminal. Set `NO_COLOR=1` to turn colours 
 ## How it works
 
 - Official repos are queried with `pacman -Ss` / `pacman -Si` against your local sync databases. The script never runs `pacman -Sy` on its own, so it can't cause a partial upgrade.
-- Queries the [AUR RPC v5 API](https://wiki.archlinux.org/title/Aurweb_RPC_interface) with `curl` and parses it with `jq`. A spinner shows while requests are in flight.
+- Queries the [AUR RPC v5 API](https://wiki.archlinux.org/title/Aurweb_RPC_interface) with `curl` and parses it with `jq`. While fetching, a spinner says what is being queried (`fetching from aur.archlinux.org...`, `searching core, extra, multilib...` from your `pacman.conf`). It stays up for at least 0.5s, fetch time included. It's only shown on a terminal, so scripts and pipes don't get the delay.
 - Package repos are cloned into `${XDG_CACHE_HOME:-~/.cache}/aur/<pkg>` and built with `makepkg -si`.
 - Dependencies that aren't installed and aren't in the official repos are treated as AUR packages and built first (installed with `--asdeps`).
 - Updates compare `pacman -Qm` versions against the AUR with `vercmp`, using a single RPC request.
