@@ -224,13 +224,14 @@ rpc() {
   printf '%s' "$resp"
 }
 
-# cmd_search <term> [pick]: lists official repo results first, then AUR results. With "pick",
-# results are numbered and the user chooses which ones to install.
+# cmd_search <term> [pick]: official repo results are numbered first (1 = best official match), then AUR
+# results by popularity. The list is printed bottom-up, so official packages sit right above the prompt
+# and the least popular AUR result is at the top. With "pick", the user chooses which ones to install.
 cmd_search() {
   [[ -n ${1:-} ]] || die "usage: -s, --search <term>"
   local term=$1 resp='{"resultcount":0,"results":[]}' installed i total repo_count aur_count numbered=false
-  local repo name ver inst desc prefix pad=''
-  local -a names=() chosen=() repo_lines=()
+  local repo name ver inst desc prefix tag pad=''
+  local -a names=() chosen=() repo_lines=() entries=() aur_out=()
   [[ ${2:-} != pick ]] || numbered=true
 
   if [[ $SCOPE != aur ]]; then
@@ -258,16 +259,14 @@ cmd_search() {
     names+=("$repo/$name")
     prefix=""
     $numbered && prefix="$(num_label $((i + 1)) "$total") "
-    if ((inst)); then
-      echo "$prefix${BLUE}$repo/${NC}${BOLD}$name${NC} ${GREEN}$ver${NC} ${CYAN}[installed]${NC}"
-    else
-      echo "$prefix${BLUE}$repo/${NC}${BOLD}$name${NC} ${GREEN}$ver${NC}"
-    fi
-    echo "    $pad$desc"
+    tag=""
+    ((inst == 0)) || tag=" ${CYAN}[installed]${NC}"
+    entries+=("$prefix${BLUE}$repo/${NC}${BOLD}$name${NC} ${GREEN}$ver${NC}$tag"$'\n'"    $pad$desc")
   done
 
+  # Each AUR result becomes exactly two lines (header, description), so they can be paired back up.
   installed=$({ pacman -Qmq || true; } | jq -Rn '[inputs]')
-  jq -r --argjson inst "$installed" --argjson numbered "$numbered" --argjson w $((${#total} + 2)) \
+  mapfile -t aur_out < <(jq -r --argjson inst "$installed" --argjson numbered "$numbered" --argjson w $((${#total} + 2)) \
     --argjson off "$repo_count" \
     --arg b "$BOLD" --arg d "$DIM" --arg m "$MAGENTA" --arg g "$GREEN" \
     --arg r "$RED" --arg c "$CYAN" --arg y "$YELLOW" --arg n "$NC" '
@@ -280,15 +279,22 @@ cmd_search() {
         + " \($y)★ \(.NumVotes)\($n) \($d)(\(.Popularity * 100 | round / 100))\($n)"
         + (if .OutOfDate then " \($r)[out of date]\($n)" else "" end)
         + (if (.Name as $x | $inst | index($x)) then " \($c)[installed]\($n)" else "" end)
-        + "\n    \($pad)\(.Description // "")"
-    ' <<<"$resp"
+        + "\n    \($pad)\(.Description // "" | gsub("[\r\n]+"; " "))"
+    ' <<<"$resp")
+  for ((i = 0; i + 1 < ${#aur_out[@]}; i += 2)); do
+    entries+=("${aur_out[i]}"$'\n'"${aur_out[i + 1]}")
+  done
+  while read -r name; do
+    names+=("aur/$name")
+  done < <(jq -r '.results | sort_by(-.Popularity)[].Name' <<<"$resp")
+
+  for ((i = ${#entries[@]} - 1; i >= 0; i--)); do
+    echo "${entries[i]}"
+  done
   echo
   info "$total result(s) for '$term' ${DIM}($repo_count official, $aur_count AUR)${NC}"
 
   $numbered || return 0
-  while read -r name; do
-    names+=("aur/$name")
-  done < <(jq -r '.results | sort_by(-.Popularity)[].Name' <<<"$resp")
   select_items "$total" "Packages to install?" ranges
   if [[ ${#SELECTED[@]} -eq 0 ]]; then
     info "Nothing selected"
