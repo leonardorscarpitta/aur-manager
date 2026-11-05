@@ -51,6 +51,7 @@ aur <term>                    # search and pick packages to install from a numbe
 aur -s, --search <term>       # search only
 aur -i, --info <pkg>          # package details
 aur -S, --install <pkg>...    # install from the official repos or the AUR
+aur -R, --remove [pkg...]     # uninstall packages, or pick from installed ones with no args
 aur -u, --update              # pacman -Syu, then upgrade AUR packages
 aur -l, --list                # installed AUR (foreign) packages
 aur -c, --clean               # remove the build cache
@@ -65,6 +66,8 @@ By default every command covers both sources:
 - **Install** sends packages found in the official repos to `sudo pacman -S --needed` and builds the rest from the AUR. If a name exists in both, the official repo wins. A prefix forces the source: `aur -S extra/neovim aur/yay`.
 - **Info** shows `pacman -Si` for official packages and AUR details otherwise.
 - **Update** runs `sudo pacman -Syu` first, then checks AUR packages.
+
+- **Remove** works the same for both sources, with `sudo pacman -Rns`, so dependencies nothing else needs and saved config backups go too. `aur -R claude-code linux` removes those packages; if any of them isn't installed, nothing is removed. With no arguments, `aur -R` lists your explicitly installed packages (`aur/`, `core/`, `extra/`, …) and you pick them by number, range or comma. There's no "all" option. Names must match exactly, so `aur -R sh` won't remove `bash` through its `provides`. Build files in the cache are kept; use `aur -c` to clear them.
 
 Modifiers limit a command to one source and can go anywhere on the command line:
 

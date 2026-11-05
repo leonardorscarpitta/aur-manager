@@ -57,6 +57,7 @@ usage() {
     ${CYAN}-s${NC}, ${CYAN}--search${NC} ${DIM}<term>${NC}      Search the official repos and the AUR
     ${CYAN}-i${NC}, ${CYAN}--info${NC} ${DIM}<pkg>${NC}         Show package details
     ${CYAN}-S${NC}, ${CYAN}--install${NC} ${DIM}<pkg>...${NC}   Install packages ${DIM}(extra/<pkg> or aur/<pkg> picks the source)${NC}
+    ${CYAN}-R${NC}, ${CYAN}--remove${NC} ${DIM}[pkg...]${NC}    Uninstall packages ${DIM}(no args: pick from installed)${NC}
     ${CYAN}-u${NC}, ${CYAN}--update${NC}             Upgrade the system and AUR packages
     ${CYAN}-l${NC}, ${CYAN}--list${NC}               List installed AUR packages
     ${CYAN}-c${NC}, ${CYAN}--clean${NC}              Remove the build cache ${DIM}($CACHE_SHOWN)${NC}
@@ -559,6 +560,81 @@ cmd_update() {
   install_pkgs "${chosen[@]}"
 }
 
+# Prints explicitly installed packages as "source<TAB>name<TAB>version", where source is the sync repo
+# the package belongs to ("aur" for foreign packages, "local" if no repo has it). Filtered by SCOPE.
+installed_explicit() {
+  local repo name ver rest
+  local -A repo_of=() foreign=()
+  while read -r repo name ver rest; do
+    [[ $rest != "[installed"* ]] || repo_of[$name]=$repo
+  done < <(pacman -Sl 2>/dev/null || true)
+  while read -r name; do
+    foreign[$name]=1
+  done < <(pacman -Qmq 2>/dev/null || true)
+  while read -r name ver; do
+    if [[ -n ${foreign[$name]:-} ]]; then
+      if [[ $SCOPE != repo ]]; then printf 'aur\t%s\t%s\n' "$name" "$ver"; fi
+    else
+      if [[ $SCOPE != aur ]]; then printf '%s\t%s\t%s\n' "${repo_of[$name]:-local}" "$name" "$ver"; fi
+    fi
+  done < <(pacman -Qe)
+}
+
+# cmd_remove [pkg...]: removes the given packages, or lets the user pick from explicitly installed ones.
+cmd_remove() {
+  local pkg name src ver need i color
+  local -a targets=() lines=()
+
+  if [[ $# -eq 0 ]]; then
+    mapfile -t lines < <(installed_explicit)
+    if [[ ${#lines[@]} -eq 0 ]]; then
+      info "No explicitly installed packages found"
+      return
+    fi
+    info "${#lines[@]} explicitly installed package(s):"
+    for i in "${!lines[@]}"; do
+      IFS=$'\t' read -r src name ver <<<"${lines[$i]}"
+      color=$BLUE
+      [[ $src != aur ]] || color=$MAGENTA
+      echo "    $(num_label $((i + 1)) "${#lines[@]}") ${color}$src/${NC}${BOLD}$name${NC} ${GREEN}$ver${NC}"
+    done
+    echo
+    select_items "${#lines[@]}" "Packages to remove?" ranges
+    if [[ ${#SELECTED[@]} -eq 0 ]]; then
+      info "Nothing selected"
+      return
+    fi
+    for i in "${SELECTED[@]}"; do
+      IFS=$'\t' read -r src name ver <<<"${lines[$i]}"
+      targets+=("$name")
+    done
+  else
+    for pkg in "$@"; do
+      valid_target "$pkg" || die "invalid package name: $pkg"
+      case $pkg in
+      aur/*) need=aur ;;
+      */*) need=repo ;;
+      *) need=$SCOPE ;;
+      esac
+      name=${pkg#*/}
+      # pacman -Q follows "provides" (e.g. sh -> bash), so require an exact name match.
+      [[ $(pacman -Qq -- "$name" 2>/dev/null) == "$name" ]] || die "$name is not installed"
+      if [[ $need == aur ]] && ! pacman -Qmq -- "$name" &>/dev/null; then
+        die "$name is not an AUR package"
+      fi
+      if [[ $need == repo ]] && ! pacman -Qnq -- "$name" &>/dev/null; then
+        die "$name is not an official repo package"
+      fi
+      targets+=("$name")
+    done
+  fi
+
+  info "Removing ${targets[*]} ${DIM}(with unneeded dependencies)${NC}"
+  sudo pacman -Rns -- "${targets[@]}" || exit 1
+  echo
+  ok "Removed ${targets[*]}"
+}
+
 cmd_list() {
   local name ver count=0
   while read -r name ver; do
@@ -614,6 +690,7 @@ main() {
   -s | --search) cmd_search "$@" ;;
   -i | --info) cmd_info "$@" ;;
   -S | --install) cmd_install "$@" ;;
+  -R | --remove) cmd_remove "$@" ;;
   -u | --update) cmd_update ;;
   -l | --list) cmd_list ;;
   -c | --clean) cmd_clean ;;
