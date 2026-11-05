@@ -51,7 +51,7 @@ aur <term>                    # search and pick packages to install from a numbe
 aur -s, --search <term>       # search only
 aur -i, --info <pkg>          # package details
 aur -S, --install <pkg>...    # install from the official repos or the AUR
-aur -R, --remove [pkg...]     # uninstall packages, or pick from installed ones with no args
+aur -R[ns], --remove <pkg>... # uninstall one or more packages
 aur -u, --update              # pacman -Syu, then upgrade AUR packages
 aur -l, --list                # installed AUR (foreign) packages
 aur -c, --clean               # remove the build cache
@@ -67,7 +67,16 @@ By default every command covers both sources:
 - **Info** shows `pacman -Si` for official packages and AUR details otherwise.
 - **Update** runs `sudo pacman -Syu` first, then checks AUR packages.
 
-- **Remove** works the same for both sources, with `sudo pacman -Rns`, so dependencies nothing else needs and saved config backups go too. `aur -R claude-code linux` removes those packages; if any of them isn't installed, nothing is removed. With no arguments, `aur -R` lists your explicitly installed packages (`aur/`, `core/`, `extra/`, …) and you pick them by number, range or comma. There's no "all" option. Names must match exactly, so `aur -R sh` won't remove `bash` through its `provides`. Build files in the cache are kept; use `aur -c` to clear them.
+- **Remove** works the same for both sources. `aur -R claude-code visual-studio-code linux` removes all three; if any of them isn't installed, nothing is removed. Add `n` and/or `s` to the flag in any order (`R` must appear exactly once). The flag is passed to `sudo pacman` as typed:
+
+  | Flag              | pacman | Also removes                     |
+  |-------------------|--------|----------------------------------|
+  | `-R` / `--remove` | `-R`   | nothing else                     |
+  | `-Rs`             | `-Rs`  | dependencies nothing else needs  |
+  | `-Rn`             | `-Rn`  | saved config backups (`.pacsave`) |
+  | `-Rns`, `-Rsn`, … | same   | both                             |
+
+  Names must match exactly, so `aur -R sh` won't remove `bash` through its `provides`. Build files in the cache are kept; use `aur -c` to clear them.
 
 Modifiers limit a command to one source and can go anywhere on the command line:
 
