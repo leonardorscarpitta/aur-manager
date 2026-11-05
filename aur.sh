@@ -20,6 +20,8 @@ RPC="$AUR_URL/rpc/v5"
 CACHE="${XDG_CACHE_HOME:-$HOME/.cache}/aur"
 CACHE_SHOWN="${CACHE/#"$HOME"/\~}"
 
+SCOPE=all  # all | aur | repo, set by -a/--aur and -r/--repo
+
 declare -A VISITED=()
 declare -A TARGETS=()
 declare -A OLD_HEAD=()
@@ -44,29 +46,54 @@ usage() {
     name=$(basename "$0")
     banner
     cat <<EOF
-  ${BOLD}Usage:${NC} $name ${CYAN}<flag>${NC} ${DIM}[args]${NC}
-         $name ${CYAN}<term>${NC}                  ${DIM}same as -s <term>${NC}
+  ${BOLD}Usage:${NC} $name ${CYAN}<flag>${NC} ${DIM}[args] [-a | -r]${NC}
+         $name ${CYAN}<term>${NC}                  ${DIM}search and pick packages to install${NC}
 
   ${BOLD}Flags:${NC}
-    ${CYAN}-s${NC}, ${CYAN}--search${NC} ${DIM}<term>${NC}      Search the AUR
+    ${CYAN}-s${NC}, ${CYAN}--search${NC} ${DIM}<term>${NC}      Search the official repos and the AUR
     ${CYAN}-i${NC}, ${CYAN}--info${NC} ${DIM}<pkg>${NC}         Show package details
-    ${CYAN}-S${NC}, ${CYAN}--install${NC} ${DIM}<pkg>...${NC}   Build and install packages (with AUR dependencies)
-    ${CYAN}-u${NC}, ${CYAN}--update${NC}             Upgrade installed AUR packages
-    ${CYAN}-l${NC}, ${CYAN}--list${NC}               List installed foreign packages
+    ${CYAN}-S${NC}, ${CYAN}--install${NC} ${DIM}<pkg>...${NC}   Install packages ${DIM}(extra/<pkg> or aur/<pkg> picks the source)${NC}
+    ${CYAN}-u${NC}, ${CYAN}--update${NC}             Upgrade the system and AUR packages
+    ${CYAN}-l${NC}, ${CYAN}--list${NC}               List installed AUR packages
     ${CYAN}-c${NC}, ${CYAN}--clean${NC}              Remove the build cache ${DIM}($CACHE_SHOWN)${NC}
     ${CYAN}-h${NC}, ${CYAN}--help${NC}               Show this help
+
+  ${BOLD}Modifiers:${NC}
+    ${CYAN}-a${NC}, ${CYAN}--aur${NC}                Only use the AUR
+    ${CYAN}-r${NC}, ${CYAN}--repo${NC}               Only use the official repos
 
 EOF
 }
 
 check_deps() {
     local c
-    for c in curl jq git makepkg pacman vercmp; do
+    for c in curl jq git makepkg pacman vercmp sudo; do
         command -v "$c" >/dev/null || die "missing dependency: $c"
     done
 }
 
 valid_name() { [[ ${1:-} =~ ^[a-z0-9@_+][a-z0-9@._+-]*$ ]]; }
+
+# A package name, optionally prefixed with its source: extra/firefox, aur/yay.
+valid_target() { [[ ${1:-} =~ ^([a-z0-9._-]+/)?[a-z0-9@_+][a-z0-9@._+-]*$ ]]; }
+
+in_repos() { pacman -Si -- "$1" &>/dev/null; }
+
+# Prints official repo matches for $1 as "repo<TAB>name<TAB>version<TAB>installed(0|1)<TAB>description".
+repo_search() {
+    local line rn ver='' rest repo='' name='' installed=0
+    while IFS= read -r line; do
+        if [[ $line == "    "* ]]; then
+            printf '%s\t%s\t%s\t%s\t%s\n' "$repo" "$name" "$ver" "$installed" "${line#    }"
+        else
+            read -r rn ver rest <<<"$line"
+            repo=${rn%%/*}
+            name=${rn#*/}
+            installed=0
+            [[ $rest != *"[installed"* ]] || installed=1
+        fi
+    done < <(pacman -Ss -- "$1" 2>/dev/null || true)
+}
 
 urlencode() { jq -rn --arg v "$1" '$v|@uri'; }
 
@@ -167,25 +194,55 @@ rpc() {
     printf '%s' "$resp"
 }
 
-# cmd_search <term> [pick]: with "pick", results are numbered and the user chooses which ones to install.
+# cmd_search <term> [pick]: lists official repo results first, then AUR results. With "pick",
+# results are numbered and the user chooses which ones to install.
 cmd_search() {
     [[ -n ${1:-} ]] || die "usage: -s, --search <term>"
-    local resp installed count i numbered=false
-    local -a names=() chosen=()
+    local term=$1 resp='{"resultcount":0,"results":[]}' installed i total repo_count aur_count numbered=false
+    local repo name ver inst desc prefix pad=''
+    local -a names=() chosen=() repo_lines=()
     [[ ${2:-} != pick ]] || numbered=true
 
-    resp=$(rpc "search/$(urlencode "$1")")
-    count=$(jq '.resultcount' <<<"$resp")
-    if (( count == 0 )); then
-        warn "no results for '$1'"
+    if [[ $SCOPE != aur ]]; then
+        mapfile -t repo_lines < <(repo_search "$term")
+    fi
+    if [[ $SCOPE == aur ]]; then
+        resp=$(rpc "search/$(urlencode "$term")")
+    elif [[ $SCOPE == all ]]; then
+        resp=$(rpc "search/$(urlencode "$term")") || {
+            warn "AUR search failed, showing official repo results only"
+            resp='{"resultcount":0,"results":[]}'
+        }
+    fi
+    repo_count=${#repo_lines[@]}
+    aur_count=$(jq '.resultcount' <<<"$resp")
+    total=$(( repo_count + aur_count ))
+    if (( total == 0 )); then
+        warn "no results for '$term'"
         return
     fi
+    $numbered && printf -v pad '%*s' $(( ${#total} + 3 )) ''
+
+    for i in "${!repo_lines[@]}"; do
+        IFS=$'\t' read -r repo name ver inst desc <<<"${repo_lines[$i]}"
+        names+=("$repo/$name")
+        prefix=""
+        $numbered && prefix="$(num_label $((i + 1)) "$total") "
+        if (( inst )); then
+            echo "$prefix${BLUE}$repo/${NC}${BOLD}$name${NC} ${GREEN}$ver${NC} ${CYAN}[installed]${NC}"
+        else
+            echo "$prefix${BLUE}$repo/${NC}${BOLD}$name${NC} ${GREEN}$ver${NC}"
+        fi
+        echo "    $pad$desc"
+    done
+
     installed=$({ pacman -Qmq || true; } | jq -Rn '[inputs]')
-    jq -r --argjson inst "$installed" --argjson numbered "$numbered" --argjson w $(( ${#count} + 2 )) \
+    jq -r --argjson inst "$installed" --argjson numbered "$numbered" --argjson w $(( ${#total} + 2 )) \
+        --argjson off "$repo_count" \
         --arg b "$BOLD" --arg d "$DIM" --arg m "$MAGENTA" --arg g "$GREEN" \
         --arg r "$RED" --arg c "$CYAN" --arg y "$YELLOW" --arg n "$NC" '
         .results | sort_by(-.Popularity) | to_entries[] |
-        (if $numbered then ("(\(.key + 1))" | (" " * ($w - length)) + .) else "" end) as $label |
+        (if $numbered then ("(\(.key + 1 + $off))" | (" " * ($w - length)) + .) else "" end) as $label |
         (if $numbered then " " * ($w + 1) else "" end) as $pad |
         .value |
         (if $numbered then "\($c)\($label)\($n) " else "" end)
@@ -196,11 +253,13 @@ cmd_search() {
         + "\n    \($pad)\(.Description // "")"
     ' <<<"$resp"
     echo
-    info "$count result(s) for '$1'"
+    info "$total result(s) for '$term' ${DIM}($repo_count official, $aur_count AUR)${NC}"
 
     $numbered || return 0
-    mapfile -t names < <(jq -r '.results | sort_by(-.Popularity)[].Name' <<<"$resp")
-    select_items "$count" "Packages to install?" ranges
+    while read -r name; do
+        names+=("aur/$name")
+    done < <(jq -r '.results | sort_by(-.Popularity)[].Name' <<<"$resp")
+    select_items "$total" "Packages to install?" ranges
     if [[ ${#SELECTED[@]} -eq 0 ]]; then
         info "Nothing selected"
         return
@@ -208,14 +267,20 @@ cmd_search() {
     for i in "${SELECTED[@]}"; do
         chosen+=("${names[$i]}")
     done
-    install_pkgs "${chosen[@]}"
+    install_targets "${chosen[@]}"
 }
 
 cmd_info() {
-    valid_name "${1:-}" || die "invalid package name: ${1:-}"
-    local resp
-    resp=$(rpc "info?arg[]=$(urlencode "$1")")
-    [[ $(jq '.resultcount' <<<"$resp") -gt 0 ]] || die "$1 not found in AUR"
+    local pkg=${1:-} resp
+    valid_target "$pkg" || die "invalid package name: $pkg"
+    if [[ $pkg != aur/* && $SCOPE != aur ]] && in_repos "$pkg"; then
+        pacman -Si -- "$pkg"
+        return
+    fi
+    [[ $pkg == aur/* || ( $pkg != */* && $SCOPE != repo ) ]] || die "$pkg not found in the official repos"
+    pkg=${pkg#aur/}
+    resp=$(rpc "info?arg[]=$(urlencode "$pkg")")
+    [[ $(jq '.resultcount' <<<"$resp") -gt 0 ]] || die "$pkg not found in the official repos or the AUR"
     jq -r --arg b "$BOLD" --arg d "$DIM" --arg g "$GREEN" --arg r "$RED" \
         --arg c "$CYAN" --arg y "$YELLOW" --arg n "$NC" '
         def row(k; v): "  \($c)\(k)\($n)\(" " * (16 - (k | length)))\(v)";
@@ -347,15 +412,55 @@ install_pkgs() {
     ok "Installed ${ORDER[*]}"
 }
 
+# install_targets <pkg>...: packages in the official repos go to pacman, the rest are built from the AUR.
+# A "<repo>/" or "aur/" prefix forces the source.
+install_targets() {
+    local pkg
+    local -a repo_pkgs=() aur_pkgs=()
+    for pkg in "$@"; do
+        valid_target "$pkg" || die "invalid package name: $pkg"
+        case $pkg in
+            aur/*)
+                [[ $SCOPE != repo ]] || die "$pkg is an AUR package, but -r/--repo was given"
+                aur_pkgs+=("${pkg#aur/}") ;;
+            */*)
+                [[ $SCOPE != aur ]] || die "$pkg is an official repo package, but -a/--aur was given"
+                repo_pkgs+=("$pkg") ;;
+            *)
+                if [[ $SCOPE != aur ]] && in_repos "$pkg"; then
+                    repo_pkgs+=("$pkg")
+                elif [[ $SCOPE != repo ]]; then
+                    aur_pkgs+=("$pkg")
+                else
+                    die "$pkg not found in the official repos"
+                fi ;;
+        esac
+    done
+
+    if [[ ${#repo_pkgs[@]} -gt 0 ]]; then
+        info "Installing from the official repos: ${repo_pkgs[*]}"
+        sudo pacman -S --needed -- "${repo_pkgs[@]}" || exit 1
+        echo
+    fi
+    [[ ${#aur_pkgs[@]} -eq 0 ]] || install_pkgs "${aur_pkgs[@]}"
+}
+
 cmd_install() {
     [[ $# -gt 0 ]] || die "usage: -S, --install <pkg>..."
-    install_pkgs "$@"
+    install_targets "$@"
 }
 
 cmd_update() {
     local -a names=() vers=() query=() outdated=() current=() available=() chosen=()
     local -A remote=()
     local name ver resp latest i width=0
+
+    if [[ $SCOPE != aur ]]; then
+        info "Upgrading official repo packages..."
+        sudo pacman -Syu || warn "official repo upgrade did not complete"
+        echo
+    fi
+    [[ $SCOPE != repo ]] || return 0
 
     while read -r name ver; do
         names+=("$name")
@@ -434,14 +539,27 @@ cmd_clean() {
 }
 
 main() {
-    local cmd=${1:--h}
+    local arg cmd
+    local -a args=()
+    for arg in "$@"; do
+        case $arg in
+            -a|--aur|-r|--repo)
+                [[ $SCOPE == all ]] || die "use either -a/--aur or -r/--repo, not both"
+                [[ $arg == -a || $arg == --aur ]] && SCOPE=aur || SCOPE=repo ;;
+            *)
+                args+=("$arg") ;;
+        esac
+    done
+    set -- "${args[@]}"
+
+    cmd=${1:--h}
     shift || true
 
     case $cmd in
         -h|--help) usage; return ;;
     esac
 
-    (( EUID != 0 )) || die "do not run as root; makepkg will call sudo when needed"
+    (( EUID != 0 )) || die "do not run as root; sudo is called when needed"
     check_deps
     banner
 
