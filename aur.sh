@@ -54,18 +54,18 @@ usage() {
          $name ${CYAN}<term>${NC}                  ${DIM}search and pick packages to install${NC}
 
   ${BOLD}Flags:${NC}
-    ${CYAN}-s${NC}, ${CYAN}--search${NC} ${DIM}<term>${NC}      Search the official repos and the AUR
-    ${CYAN}-i${NC}, ${CYAN}--info${NC} ${DIM}<pkg>${NC}         Show package details
-    ${CYAN}-S${NC}, ${CYAN}--install${NC} ${DIM}<pkg>...${NC}   Install packages ${DIM}(extra/<pkg> or aur/<pkg> picks the source)${NC}
-    ${CYAN}-R${NC}${DIM}[ns]${NC}, ${CYAN}--remove${NC} ${DIM}<pkg>${NC}   Uninstall one or more packages ${DIM}(s: unneeded deps, n: config backups)${NC}
-    ${CYAN}-u${NC}, ${CYAN}--update${NC}             Upgrade the system and AUR packages
-    ${CYAN}-l${NC}, ${CYAN}--list${NC}               List installed AUR packages
-    ${CYAN}-c${NC}, ${CYAN}--clean${NC}              Remove the build cache ${DIM}($CACHE_SHOWN)${NC}
-    ${CYAN}-h${NC}, ${CYAN}--help${NC}               Show this help
+    ${CYAN}-s${NC},     ${CYAN}--search${NC} ${DIM}<term>${NC}     Search the official repos and the AUR
+    ${CYAN}-i${NC},     ${CYAN}--info${NC} ${DIM}<pkg>${NC}        Show package details
+    ${CYAN}-S${NC},     ${CYAN}--install${NC} ${DIM}<pkg>...${NC}  Install packages ${DIM}(extra/<pkg> or aur/<pkg> picks the source)${NC}
+    ${CYAN}-R${NC}${DIM}[ns]${NC}, ${CYAN}--remove${NC} ${DIM}<pkg>...${NC}   Uninstall packages ${DIM}(s: unneeded deps, n: config backups)${NC}
+    ${CYAN}-u${NC},     ${CYAN}--update${NC}            Upgrade the system and AUR packages
+    ${CYAN}-l${NC},     ${CYAN}--list${NC}              List installed AUR packages
+    ${CYAN}-c${NC},     ${CYAN}--clean${NC}             Remove the build cache ${DIM}($CACHE_SHOWN)${NC}
+    ${CYAN}-h${NC},     ${CYAN}--help${NC}              Show this help
 
   ${BOLD}Modifiers:${NC}
-    ${CYAN}-a${NC}, ${CYAN}--aur${NC}                Only use the AUR
-    ${CYAN}-r${NC}, ${CYAN}--repo${NC}               Only use the official repos
+    ${CYAN}-a${NC},     ${CYAN}--aur${NC}               Only use the AUR
+    ${CYAN}-r${NC},     ${CYAN}--repo${NC}              Only use the official repos
 
 EOF
 }
