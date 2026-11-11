@@ -61,6 +61,7 @@ usage() {
     ${CYAN}-u${NC},     ${CYAN}--update${NC}            Upgrade the system and AUR packages
     ${CYAN}-l${NC},     ${CYAN}--list${NC}              List installed AUR packages
     ${CYAN}-c${NC},     ${CYAN}--clean${NC}             Remove the build cache ${DIM}($CACHE_SHOWN)${NC}
+    ${CYAN}-b${NC},     ${CYAN}--browse${NC} ${DIM}<pkg>${NC}      Browse a package's AUR repo ${DIM}(folders list, files open)${NC}
     ${CYAN}-h${NC},     ${CYAN}--help${NC}              Show this help
 
   ${BOLD}Modifiers:${NC}
@@ -603,6 +604,68 @@ cmd_remove() {
   ok "Removed ${targets[*]}"
 }
 
+# cmd_browse <pkg> [path]: browses the package's AUR git repo. Picking a folder lists it, picking a file
+# opens it in the pager. Paths are resolved and must stay inside the repo and outside .git.
+cmd_browse() {
+  local pkg=${1:-} rel=${2:-} root target answer i
+  local -a dirs files entries
+  pkg=${pkg#aur/}
+  valid_name "$pkg" || die "usage: -b, --browse <pkg> [path]"
+
+  mkdir -p "$CACHE"
+  info "Fetching ${CYAN}$pkg${NC}..."
+  sync_repo "$pkg"
+  root=$(realpath -- "$CACHE/$pkg")
+
+  while true; do
+    rel=${rel#/}
+    rel=${rel%/}
+    target=$(realpath -m -- "$root${rel:+/$rel}")
+    if [[ ($target != "$root" && $target != "$root"/*) || $target == "$root/.git" || $target == "$root"/.git/* ]]; then
+      die "path is outside the package repo: ${rel:-/}"
+    fi
+    [[ -e $target ]] || die "no such file or folder: $rel"
+    rel=${target#"$root"}
+    rel=${rel#/}
+
+    if [[ -f $target ]]; then
+      ${PAGER:-less} "$target"
+      rel=$(dirname -- "$rel")
+      [[ $rel != . ]] || rel=""
+      continue
+    fi
+
+    mapfile -t dirs < <(find "$target" -mindepth 1 -maxdepth 1 -type d ! -name .git -printf '%f\n' | sort)
+    mapfile -t files < <(find "$target" -mindepth 1 -maxdepth 1 ! -type d -printf '%f\n' | sort)
+    entries=("${dirs[@]/%//}" "${files[@]}")
+
+    echo
+    echo "  ${MAGENTA}aur/${NC}${BOLD}$pkg${NC}${DIM}:/$rel${NC}"
+    [[ -z $rel ]] || echo "    $(num_label 0 "${#entries[@]}") ${DIM}../${NC}"
+    for i in "${!entries[@]}"; do
+      if [[ ${entries[i]} == */ ]]; then
+        echo "    $(num_label $((i + 1)) "${#entries[@]}") ${BLUE}${entries[i]}${NC}"
+      else
+        echo "    $(num_label $((i + 1)) "${#entries[@]}") ${entries[i]}"
+      fi
+    done
+    echo
+
+    read -rp "${BLUE}::${NC} ${BOLD}Open?${NC} ${DIM}[number${rel:+, 0 = up}, Enter = quit]${NC} " answer || return 0
+    answer=${answer//[[:space:]]/}
+    [[ -n $answer ]] || return 0
+    if [[ $answer == 0 && -n $rel ]]; then
+      rel=$(dirname -- "$rel")
+      [[ $rel != . ]] || rel=""
+    elif [[ $answer =~ ^[0-9]+$ ]] && ((10#$answer >= 1 && 10#$answer <= ${#entries[@]})); then
+      i=$((10#$answer - 1))
+      rel="${rel:+$rel/}${entries[i]%/}"
+    else
+      warn "invalid choice '$answer'"
+    fi
+  done
+}
+
 cmd_list() {
   local name ver count=0
   while read -r name ver; do
@@ -662,6 +725,7 @@ main() {
   -u | --update) cmd_update ;;
   -l | --list) cmd_list ;;
   -c | --clean) cmd_clean ;;
+  -b | --browse) cmd_browse "$@" ;;
   -*)
     if valid_remove_flag "$cmd"; then
       cmd_remove "$cmd" "$@"
