@@ -55,6 +55,7 @@ aur -R[ns], --remove <pkg>... # uninstall one or more packages
 aur -u, --update              # pacman -Syu, then upgrade AUR packages
 aur -l, --list                # installed AUR (foreign) packages
 aur -c, --clean               # remove the build cache
+aur -b, --browse <pkg> [path] # browse a package's AUR git repo: folders are listed, files open in $PAGER
 aur -h, --help                # help
 ```
 
