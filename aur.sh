@@ -651,10 +651,10 @@ cmd_browse() {
     done
     echo
 
-    read -rp "${BLUE}::${NC} ${BOLD}Open?${NC} ${DIM}[number${rel:+, 0 = up}, Enter = quit]${NC} " answer || return 0
+    read -rp "${BLUE}::${NC} ${BOLD}Open?${NC} ${DIM}[number${rel:+, 0 / .. / b = back}, Enter = quit]${NC} " answer || return 0
     answer=${answer//[[:space:]]/}
     [[ -n $answer ]] || return 0
-    if [[ $answer == 0 && -n $rel ]]; then
+    if [[ ($answer == 0 || $answer == .. || $answer == [bB]) && -n $rel ]]; then
       rel=$(dirname -- "$rel")
       [[ $rel != . ]] || rel=""
     elif [[ $answer =~ ^[0-9]+$ ]] && ((10#$answer >= 1 && 10#$answer <= ${#entries[@]})); then
